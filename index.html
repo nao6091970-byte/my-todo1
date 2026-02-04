@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Task Master</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --text: #334155;
+            --border: #e2e8f0;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --work-bg: #dbeafe; --work-text: #1e40af;
+            --personal-bg: #fef3c7; --personal-text: #92400e;
+            --urgent-bg: #fee2e2; --urgent-text: #991b1b;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 650px;
+            background: var(--card);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        h1 { text-align: center; margin-bottom: 25px; color: var(--primary); }
+
+        /* 入力エリア */
+        .input-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .row { display: flex; gap: 8px; }
+
+        input[type="text"], input[type="date"], select {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        input[type="text"]:focus { border-color: var(--primary); }
+        input[type="text"] { flex: 1; }
+        
+        button {
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+
+        .btn-add { background: var(--primary); color: white; flex: 1; }
+        .btn-voice { background: #ec4899; color: white; font-size: 1.2rem; }
+        .btn-print { background: #64748b; color: white; width: 100%; margin-top: 20px; }
+
+        /* タスクリスト */
+        ul { list-style: none; padding: 0; }
+
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+
+        /* 期限強調スタイル */
+        .status-overdue { border-color: var(--danger); background: #fff1f2; }
+        .status-near { border-color: var(--warning); background: #fffbeb; }
+
+        .todo-content { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        
+        /* 編集可能なテキストエリア */
+        .todo-text {
+            font-weight: 500;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
+            display: inline-block;
+            min-width: 50px;
+        }
+        .todo-text:hover { background: #f1f5f9; cursor: text; }
+        .todo-text:focus { background: white; outline: 2px solid var(--primary); }
+
+        .completed .todo-text { text-decoration: line-through; color: #94a3b8; opacity: 0.6; }
+
+        /* バッジ表示 */
+        .meta-info { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.75rem; }
+        .badge { padding: 2px 10px; border-radius: 99px; font-weight: bold; }
+        .badge-date { background: #e2e8f0; color: #475569; }
+        .alert-text { color: var(--danger); font-weight: bold; margin-left: 4px; }
+
+        .cat-仕事 { background: var(--work-bg); color: var(--work-text); }
+        .cat-個人 { background: var(--personal-bg); color: var(--personal-text); }
+        .cat-緊急 { background: var(--urgent-bg); color: var(--urgent-text); }
+
+        .btn-delete { background: none; color: #cbd5e1; font-size: 1.4rem; padding: 0 5px; }
+        .btn-delete:hover { color: var(--danger); }
+
+        .recording { animation: pulse 1.5s infinite; background: #f43f5e !important; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        @media print {
+            .input-section, .btn-print, .btn-delete, input[type="checkbox"] { display: none !important; }
+            .container { box-shadow: none; border: none; width: 100%; }
+            .todo-item { border: 1px solid #ccc; background: white !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Smart Task Planner</h1>
+
+    <div class="input-section">
+        <div class="row">
+            <input type="text" id="todo-input" placeholder="タスクを入力（またはマイクで入力）">
+            <button class="btn-voice" id="voice-btn" title="音声入力">🎤</button>
+        </div>
+        <div class="row">
+            <input type="date" id="todo-date" title="期限">
+            <select id="todo-category">
+                <option value="仕事">仕事</option>
+                <option value="個人">個人</option>
+                <option value="緊急">緊急</option>
+            </select>
+            <button class="btn-add" id="add-btn">タスクを追加</button>
+        </div>
+    </div>
+
+    <ul id="todo-list"></ul>
+
+    <button class="btn-print" onclick="window.print()">リストを印刷・PDF保存</button>
+</div>
+
+<script>
+    const input = document.getElementById('todo-input');
+    const dateInput = document.getElementById('todo-date');
+    const categoryInput = document.getElementById('todo-category');
+    const todoList = document.getElementById('todo-list');
+
+    let todos = JSON.parse(localStorage.getItem('pro-todos-v2')) || [];
+
+    function save() {
+        localStorage.setItem('pro-todos-v2', JSON.stringify(todos));
+    }
+
+    // 期限の計算（今日、期限切れ、近い）
+    function getDeadlineStatus(dateStr) {
+        if (!dateStr) return '';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const target = new Date(dateStr);
+        target.setHours(0, 0, 0, 0);
+        
+        const diffTime = target - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays <= 0) return 'overdue'; // 今日または期限切れ
+        if (diffDays <= 3) return 'near';    // 3日以内
+        return '';
+    }
+
+    function render() {
+        todoList.innerHTML = '';
+        todos.forEach((todo, index) => {
+            const status = getDeadlineStatus(todo.date);
+            const li = document.createElement('li');
+            li.className = `todo-item ${todo.completed ? 'completed' : ''} ${status ? 'status-' + status : ''}`;
+            
+            li.innerHTML = `
+                <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodo(${index})">
+                <div class="todo-content">
+                    <span class="todo-text" 
+                          contenteditable="true" 
+                          onblur="editTodo(${index}, this.innerText)"
+                          onkeydown="handleEditKey(event, this)">${escapeHtml(todo.text)}</span>
+                    <div class="meta-info">
+                        ${todo.date ? `<span class="badge badge-date">📅 ${todo.date}${status === 'overdue' ? '<span class="alert-text">！期限</span>' : ''}</span>` : ''}
+                        <span class="badge cat-${todo.category}">${todo.category}</span>
+                    </div>
+                </div>
+                <button class="btn-delete" onclick="deleteTodo(${index})">×</button>
+            `;
+            todoList.appendChild(li);
+        });
+    }
+
+    // --- アクション ---
+    function addTodo() {
+        const text = input.value.trim();
+        if (!text) return;
+
+        todos.push({
+            text: text,
+            date: dateInput.value,
+            category: categoryInput.value,
+            completed: false
+        });
+
+        input.value = '';
+        save();
+        render();
+    }
+
+    function toggleTodo(index) {
+        todos[index].completed = !todos[index].completed;
+        save();
+        render();
+    }
+
+    function deleteTodo(index) {
+        todos.splice(index, 1);
+        save();
+        render();
+    }
+
+    // テキスト編集保存
+    function editTodo(index, newText) {
+        todos[index].text = newText.trim();
+        save();
+        // render()を呼ぶとフォーカスが外れるためここでは保存のみ
+    }
+
+    function handleEditKey(e, el) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            el.blur(); // フォーカスを外して保存を確定させる
+        }
+    }
+
+    // --- 音声入力 ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.onstart = () => document.getElementById('voice-btn').classList.add('recording');
+        recognition.onend = () => document.getElementById('voice-btn').classList.remove('recording');
+        recognition.onresult = (e) => {
+            const voiceText = e.results[0][0].transcript;
+            input.value = voiceText;
+            // 音声入力後はユーザーが編集できるよう、自動追加はせず入力欄に入れるだけにする
+            input.focus();
+        };
+        document.getElementById('voice-btn').onclick = () => recognition.start();
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    document.getElementById('add-btn').onclick = addTodo;
+    input.onkeypress = (e) => { if (e.key === 'Enter') addTodo(); };
+
+    render();
+</script>
+
+</body>
+</html>
