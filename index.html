@@ -78,6 +78,55 @@
         .btn-voice { background: #ec4899; color: white; font-size: 1.2rem; }
         .btn-print { background: #64748b; color: white; width: 100%; margin-top: 20px; }
 
+        /* ソートバー */
+        .sort-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .sort-label {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #64748b;
+        }
+
+        .sort-btn {
+            background: white;
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .sort-btn:hover {
+            background: #f1f5f9;
+            border-color: var(--primary);
+        }
+
+        .sort-btn.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .sort-btn.desc::after {
+            content: ' ▼';
+            font-size: 0.7rem;
+        }
+
+        .sort-btn.asc::after {
+            content: ' ▲';
+            font-size: 0.7rem;
+        }
+
         /* タスクリスト */
         ul { list-style: none; padding: 0; }
 
@@ -91,6 +140,32 @@
             margin-bottom: 12px;
             gap: 12px;
             transition: all 0.2s;
+            cursor: grab;
+        }
+
+        .todo-item:active {
+            cursor: grabbing;
+        }
+
+        .todo-item.dragging {
+            opacity: 0.5;
+            transform: scale(0.98);
+        }
+
+        .todo-item.drag-over {
+            border-color: var(--primary);
+            background: #f0f4ff;
+        }
+
+        .drag-handle {
+            cursor: grab;
+            color: #cbd5e1;
+            font-size: 1.2rem;
+            padding: 0 5px;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
         }
 
         /* 期限強調スタイル */
@@ -130,9 +205,9 @@
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 
         @media print {
-            .input-section, .btn-print, .btn-delete, input[type="checkbox"] { display: none !important; }
+            .input-section, .sort-bar, .btn-print, .btn-delete, .drag-handle, input[type="checkbox"] { display: none !important; }
             .container { box-shadow: none; border: none; width: 100%; }
-            .todo-item { border: 1px solid #ccc; background: white !important; }
+            .todo-item { border: 1px solid #ccc; background: white !important; cursor: default !important; }
         }
     </style>
 </head>
@@ -157,6 +232,15 @@
         </div>
     </div>
 
+    <div class="sort-bar">
+        <span class="sort-label">並び替え:</span>
+        <button class="sort-btn" data-sort="manual">手動順</button>
+        <button class="sort-btn" data-sort="date">期限順</button>
+        <button class="sort-btn" data-sort="created">作成順</button>
+        <button class="sort-btn" data-sort="category">カテゴリー順</button>
+        <button class="sort-btn" data-sort="priority">優先度順</button>
+    </div>
+
     <ul id="todo-list"></ul>
 
     <button class="btn-print" onclick="window.print()">リストを印刷・PDF保存</button>
@@ -169,6 +253,8 @@
     const todoList = document.getElementById('todo-list');
 
     let todos = JSON.parse(localStorage.getItem('pro-todos-v2')) || [];
+    let currentSort = { type: 'manual', order: 'asc' };
+    let draggedIndex = null;
 
     function save() {
         localStorage.setItem('pro-todos-v2', JSON.stringify(todos));
@@ -191,28 +277,48 @@
     }
 
     function render() {
+        // ソート適用
+        const sortedTodos = applySorting([...todos]);
+        
         todoList.innerHTML = '';
-        todos.forEach((todo, index) => {
+        sortedTodos.forEach((todo, displayIndex) => {
+            const originalIndex = todos.indexOf(todo);
             const status = getDeadlineStatus(todo.date);
             const li = document.createElement('li');
             li.className = `todo-item ${todo.completed ? 'completed' : ''} ${status ? 'status-' + status : ''}`;
+            li.draggable = currentSort.type === 'manual';
+            li.dataset.index = originalIndex;
+            
+            // ドラッグイベント
+            if (currentSort.type === 'manual') {
+                li.addEventListener('dragstart', handleDragStart);
+                li.addEventListener('dragend', handleDragEnd);
+                li.addEventListener('dragover', handleDragOver);
+                li.addEventListener('drop', handleDrop);
+                li.addEventListener('dragenter', handleDragEnter);
+                li.addEventListener('dragleave', handleDragLeave);
+            }
             
             li.innerHTML = `
-                <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodo(${index})">
+                ${currentSort.type === 'manual' ? '<span class="drag-handle">⋮⋮</span>' : ''}
+                <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodo(${originalIndex})">
                 <div class="todo-content">
                     <span class="todo-text" 
                           contenteditable="true" 
-                          onblur="editTodo(${index}, this.innerText)"
+                          onblur="editTodo(${originalIndex}, this.innerText)"
                           onkeydown="handleEditKey(event, this)">${escapeHtml(todo.text)}</span>
                     <div class="meta-info">
                         ${todo.date ? `<span class="badge badge-date">📅 ${todo.date}${status === 'overdue' ? '<span class="alert-text">！期限</span>' : ''}</span>` : ''}
                         <span class="badge cat-${todo.category}">${todo.category}</span>
                     </div>
                 </div>
-                <button class="btn-delete" onclick="deleteTodo(${index})">×</button>
+                <button class="btn-delete" onclick="deleteTodo(${originalIndex})">×</button>
             `;
             todoList.appendChild(li);
         });
+        
+        // ソートボタンのアクティブ状態更新
+        updateSortButtons();
     }
 
     // --- アクション ---
@@ -224,7 +330,9 @@
             text: text,
             date: dateInput.value,
             category: categoryInput.value,
-            completed: false
+            completed: false,
+            createdAt: new Date().toISOString(),
+            order: todos.length
         });
 
         input.value = '';
@@ -280,8 +388,180 @@
         return div.innerHTML;
     }
 
+    // ソート機能
+    function applySorting(todoArray) {
+        if (currentSort.type === 'manual') {
+            return todoArray.sort((a, b) => {
+                const orderA = a.order !== undefined ? a.order : 999999;
+                const orderB = b.order !== undefined ? b.order : 999999;
+                return orderA - orderB;
+            });
+        }
+        
+        const sorted = [...todoArray];
+        
+        switch(currentSort.type) {
+            case 'date':
+                sorted.sort((a, b) => {
+                    if (!a.date && !b.date) return 0;
+                    if (!a.date) return 1;
+                    if (!b.date) return -1;
+                    return currentSort.order === 'asc' 
+                        ? new Date(a.date) - new Date(b.date)
+                        : new Date(b.date) - new Date(a.date);
+                });
+                break;
+                
+            case 'created':
+                sorted.sort((a, b) => {
+                    const dateA = new Date(a.createdAt || 0);
+                    const dateB = new Date(b.createdAt || 0);
+                    return currentSort.order === 'asc' 
+                        ? dateA - dateB
+                        : dateB - dateA;
+                });
+                break;
+                
+            case 'category':
+                const categoryOrder = { '緊急': 1, '仕事': 2, '個人': 3 };
+                sorted.sort((a, b) => {
+                    const orderA = categoryOrder[a.category] || 999;
+                    const orderB = categoryOrder[b.category] || 999;
+                    return currentSort.order === 'asc'
+                        ? orderA - orderB
+                        : orderB - orderA;
+                });
+                break;
+                
+            case 'priority':
+                // 優先度: 期限切れ > 期限近い > 緊急カテゴリ > 期限あり > その他
+                sorted.sort((a, b) => {
+                    const getPriority = (todo) => {
+                        const status = getDeadlineStatus(todo.date);
+                        if (status === 'overdue') return 1;
+                        if (status === 'near') return 2;
+                        if (todo.category === '緊急') return 3;
+                        if (todo.date) return 4;
+                        return 5;
+                    };
+                    
+                    const priA = getPriority(a);
+                    const priB = getPriority(b);
+                    return currentSort.order === 'asc'
+                        ? priA - priB
+                        : priB - priA;
+                });
+                break;
+        }
+        
+        return sorted;
+    }
+
+    function updateSortButtons() {
+        document.querySelectorAll('.sort-btn').forEach(btn => {
+            const sortType = btn.dataset.sort;
+            btn.classList.remove('active', 'asc', 'desc');
+            
+            if (sortType === currentSort.type) {
+                btn.classList.add('active');
+                if (sortType !== 'manual') {
+                    btn.classList.add(currentSort.order);
+                }
+            }
+        });
+    }
+
+    function changeSortType(type) {
+        if (currentSort.type === type && type !== 'manual') {
+            // 同じソートをクリックしたら昇順・降順を切り替え
+            currentSort.order = currentSort.order === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort.type = type;
+            currentSort.order = 'asc';
+        }
+        render();
+    }
+
+    // ドラッグ&ドロップ機能
+    function handleDragStart(e) {
+        draggedIndex = parseInt(e.target.dataset.index);
+        e.target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragEnd(e) {
+        e.target.classList.remove('dragging');
+        document.querySelectorAll('.todo-item').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+    }
+
+    function handleDragOver(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+    }
+
+    function handleDragEnter(e) {
+        e.target.closest('.todo-item')?.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+        e.target.closest('.todo-item')?.classList.remove('drag-over');
+    }
+
+    function handleDrop(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+        
+        const dropTarget = e.target.closest('.todo-item');
+        if (!dropTarget) return false;
+        
+        const dropIndex = parseInt(dropTarget.dataset.index);
+        
+        if (draggedIndex !== dropIndex) {
+            // 配列の並び替え
+            const draggedItem = todos[draggedIndex];
+            todos.splice(draggedIndex, 1);
+            
+            const newDropIndex = todos.indexOf(todos.find(t => todos.indexOf(t) === (dropIndex > draggedIndex ? dropIndex - 1 : dropIndex)));
+            todos.splice(newDropIndex + (dropIndex > draggedIndex ? 1 : 0), 0, draggedItem);
+            
+            // order値を再計算
+            todos.forEach((todo, idx) => {
+                todo.order = idx;
+            });
+            
+            save();
+            render();
+        }
+        
+        return false;
+    }
+
+    // ソートボタンのイベントリスナー
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            changeSortType(btn.dataset.sort);
+        });
+    });
+
     document.getElementById('add-btn').onclick = addTodo;
     input.onkeypress = (e) => { if (e.key === 'Enter') addTodo(); };
+
+    // 既存のtodosにcreatedAtとorderがない場合は追加
+    todos.forEach((todo, index) => {
+        if (!todo.createdAt) {
+            todo.createdAt = new Date().toISOString();
+        }
+        if (todo.order === undefined) {
+            todo.order = index;
+        }
+    });
+    save();
 
     render();
 </script>
